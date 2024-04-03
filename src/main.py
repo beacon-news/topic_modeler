@@ -108,8 +108,11 @@ def model_topics(query: QueryConfig, docs):
     topic_id = hashlib.sha1(f"{topic_name}-{start_time}-{end_time}".encode()).hexdigest()
     topics.append({
       "_id": topic_id, 
-      "start_time": start_time,
-      "end_time": end_time,
+      "create_time": datetime.now().isoformat(),
+      "query": {
+        "start_time": start_time,
+        "end_time": end_time,
+      },
       "topic": topic_name,
       "count": d[0],
       "representative_articles": [],
@@ -202,10 +205,12 @@ def run_topic_modeling():
   log.info(f"running topic modeling with query {query}")
 
   # query the db, only what is needed
+  # TODO: set a reasonable size, or process every doc
   docs = es.es.search(
     index="articles",
     query=es_query,
-    source=["_id", "analyzer.embeddings", "article"]
+    source=["_id", "analyzer.embeddings", "article"],
+    size=8000,
   )
 
   # transform 
