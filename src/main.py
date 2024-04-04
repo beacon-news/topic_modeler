@@ -173,11 +173,15 @@ def model_topics(query: QueryConfig, docs):
 
 
 def run_topic_modeling():
-  if len(sys.argv) != 2:
-    print(f"usage: {sys.argv[0]} <config_path>")
-    exit(1)
+  env_config_path = check_env("QUERY_CONFIG", "")
 
-  config_path = sys.argv[1]
+  if len(sys.argv) >= 2:
+    config_path = sys.argv[1]
+  elif env_config_path != "":
+    config_path = env_config_path
+  else:
+    print(f"usage: {sys.argv[0]} <config_path>, or set the 'QUERY_CONFIG' environment variable")
+    exit(1)
 
   with open(config_path) as f:
     if config_path.endswith(".json"):
