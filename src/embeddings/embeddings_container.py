@@ -1,5 +1,6 @@
 import pickle
 from datetime import date
+from sentence_transformers import SentenceTransformer
 
 # Contains the documents, embeddings, embeddings model
 
@@ -29,7 +30,12 @@ class EmbeddingsModelContainer:
       print(f"loading {cls.__name__} from {filename}")
       d = pickle.load(f)
       save_date = d['save_date']
-      embeddings_model = d['embeddings_model']
+      embeddings_model: SentenceTransformer = d['embeddings_model']
+
+      # # add a default prompt key to make it work with SentenceTransformers ^2.3.1 and bertopic
+      # if not hasattr(embeddings_model, 'default_prompt_name'):
+      #   embeddings_model.default_prompt_name = 'default_prompt'
+
       embeddings_model_name = d['embeddings_model_name']
       ec = EmbeddingsModelContainer(embeddings_model, embeddings_model_name)
       ec.save_date = save_date

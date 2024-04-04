@@ -1,0 +1,53 @@
+# local image, containing the scheduler script
+FROM scheduler
+
+USER root 
+
+WORKDIR /app
+
+COPY requirements.txt requirements.txt
+
+RUN pip3 install -r requirements.txt --no-cache-dir
+
+RUN apt-get update && apt-get install -y procps
+
+RUN useradd app --create-home --shell /bin/bash
+# USER app
+
+COPY . .
+
+VOLUME /query_conf
+
+ENV EMBEDDINGS_MODEL_PATH=models/embeddings/embeddings_container_all_MiniLM_L6_v2.pkl
+ENV ELASTIC_PASSWORD=password
+
+
+# COPY <<EOF schedule_conf.yaml
+# jobs: 
+# - cmd: |
+#     cd /app && \
+#     for i in $(ls /scrape_conf)
+#     do
+#       python src/main.py \\
+#         -c /scrape_conf/\$i \\
+#         --store mongodb \\
+#         --cache redis \\
+#         --notifier redis_streams \\
+#         -l 2
+#     done
+
+#   schedule:
+#   - every(1).minutes
+# EOF
+
+# ENTRYPOINT ["python3", "/scheduler/src/scheduler.py", "schedule_conf.yaml"]
+
+
+COPY <<EOF schedule_conf.yaml
+jobs: 
+- cmd: cd /app && python src/main.py 
+  schedule:
+  - every(1).minutes
+EOF
+
+ENTRYPOINT ["python3", "/scheduler/src/scheduler.py", "schedule_conf.yaml"]
