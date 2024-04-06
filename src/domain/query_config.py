@@ -9,6 +9,11 @@ class PublishDateQuery(pydantic.BaseModel):
 
   @pydantic.field_validator("start", "end", mode="before")
   def parse_date_str(date_str: str) -> datetime:
+
+    # validates absolute and relative date strings
+    # e.g. absolute iso time: 2020-01-01T00:00:00
+    # e.g. relative time: now-1d, now-1m
+
     try:
       dt = datetime.fromisoformat(date_str)
     except Exception:

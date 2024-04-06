@@ -1,6 +1,9 @@
 from utils import log_utils
-from config.query_config import QueryConfig
-from repository.elasticsearch_store import ElasticsearchStore
+from domain.query_config import QueryConfig
+from domain.article import Article
+from domain.topic import Topic, TopicArticle, ArticleTopic
+from repository.elasticsearch_repository import ElasticsearchRepository
+from repository.repository import *
 import os
 import sys
 import json
@@ -34,7 +37,7 @@ ELASTIC_CONN = check_env('ELASTIC_HOST', 'https://localhost:9200')
 ELASTIC_CA_PATH = check_env('ELASTIC_CA_PATH', 'certs/_data/ca/ca.crt')
 ELASTIC_TLS_INSECURE = bool(check_env('ELASTIC_TLS_INSECURE', False))
 
-es = ElasticsearchStore(
+repo: ArticleRepository | TopicRepository = ElasticsearchRepository(
   ELASTIC_CONN, 
   ELASTIC_USER, 
   ELASTIC_PASSWORD, 
@@ -81,42 +84,37 @@ bt = BERTopic(
 
 pd.set_option('display.max_columns', None)
 
-def model_topics(query: QueryConfig, docs):
+def model_topics(query: QueryConfig, articles: list[Article]):
 
-  doc_texts = ["\n".join(d["article"]["title"]) + "\n" + "\n".join(d["article"]["paragraphs"]) for d in docs]
-  doc_embeddings = np.array([d["analyzer"]["embeddings"] for d in docs])
+  doc_texts = ["\n".join(art.title) + "\n" + "\n".join(art.paragraphs) for art in articles]
+  doc_embeddings = np.array([art.embeddings for art in articles])
 
   log.info(f"fitting topic modeling model on {len(doc_texts)} docs")
 
   bt.fit_transform(doc_texts, doc_embeddings)
 
-  ti = bt.get_topic_info()
-  log.info(f"found {len(ti)} topics, printing topic info")
-  print(ti)
-
-  # create the topics
   # create the topics without representative docs
-  topics = []
+  topics: list[Topic] = []
   topic_info = bt.get_topic_info()
+  log.info(f"found {len(topic_info)} topics, printing topic info")
+  print(topic_info)
 
   start_time = query.publish_date.start.isoformat()
   end_time = query.publish_date.end.isoformat()
 
   topic_df_dict = topic_info.loc[topic_info["Topic"] != -1, ["Count", "Representation"]].to_dict()
   for d in zip(topic_df_dict["Count"].values(), topic_df_dict["Representation"].values()):
+
     topic_name = " ".join(d[1])
     topic_id = hashlib.sha1(f"{topic_name}-{start_time}-{end_time}".encode()).hexdigest()
-    topics.append({
-      "_id": topic_id, 
-      "create_time": datetime.now().isoformat(),
-      "query": {
-        "start_time": start_time,
-        "end_time": end_time,
-      },
-      "topic": topic_name,
-      "count": d[0],
-      "representative_articles": [],
-    })
+    topics.append(Topic(
+      id=topic_id,
+      create_time=datetime.now().isoformat(),
+      query=query,
+      topic=topic_name,
+      count=d[0],
+      representative_articles=[],
+    ))
   
   if len(topics) == 0:
     log.info(f"only outliers found, returning")
@@ -127,7 +125,6 @@ def model_topics(query: QueryConfig, docs):
   # add docs to topics
   doc_info = bt.get_document_info(doc_texts)
 
-  # don't filter out anything, we need the correct order to correlate with 'docs'
   doc_df_dict = doc_info.loc[doc_info["Topic"] != -1, ["Topic", "Representative_document"]].to_dict()
   for doc_ind, topic_ind, representative in zip(
     doc_df_dict["Topic"].keys(), 
@@ -135,41 +132,29 @@ def model_topics(query: QueryConfig, docs):
     doc_df_dict["Representative_document"].values()
   ):
     
-    # add representative doc
+    art = articles[doc_ind]
+
+    # add representative doc to the topic
     if representative:
+      topics[topic_ind].representative_articles.append(
+        TopicArticle(
+          id=art.id,
+          url=art.url,
+          publish_date=art.publish_date,
+          author=art.author,
+          title=art.title,
+        )
+      )
 
-      # add duplicate of article to topic
-      art = docs[doc_ind]["article"]
-      art_duplicate = {
-        "_id": docs[doc_ind]["_id"],
-        "url": art["url"],
-        "publish_date": art["publish_date"],
-        "author": art["author"],
-        "title": art["title"],
-      }
-      topics[topic_ind]["representative_articles"].append(art_duplicate)
-
-    es_topic = {
-      "id": topics[topic_ind]["_id"],
-      "topic": topics[topic_ind]["topic"],
-    }
-    es.update_article_topic(docs[doc_ind]["_id"], es_topic)
+    article_topic = ArticleTopic(
+      id=topics[topic_ind].id,
+      topic=topics[topic_ind].topic,
+    )
+    repo.update_article_topic(art, article_topic)
   
   # insert the topics
-  ids = es.store_topic_batch(topics)
+  ids = repo.store_topics(topics)
   log.info(f"stored {len(ids)} topics, topic ids: {ids}")
-  
-  print(topics[0])
-  print("=======================================")
-  
-  # import copy
-  # cp = copy.deepcopy(docs)
-  # for c in cp:
-  #   del c["analyzer"]["embeddings"]
-  #   del c["article"]["paragraphs"]
-
-  # print(cp[0])
-  # print("=======================================")
 
 
 def run_topic_modeling():
@@ -189,47 +174,12 @@ def run_topic_modeling():
     elif config_path.endswith(".yaml") or config_path.endswith(".yml"):
       config = yaml.safe_load(f)
 
-  print(config)
   query = QueryConfig(**config)
 
-  # transform query in config to db query
-  es_query = {
-    "bool": {
-      "filter": {
-        "range": {
-          "article.publish_date": {
-            "gte": query.publish_date.start.isoformat(),
-            "lte": query.publish_date.end.isoformat(),
-          }
-        }
-      }
-    }
-  }
-
-  log.info(f"running topic modeling with query {query}")
-
-  # query the db, only what is needed
-  # TODO: set a reasonable size, or process every doc
-  docs = es.es.search(
-    index="articles",
-    query=es_query,
-    source=["_id", "analyzer.embeddings", "article"],
-    size=8000,
-  )
-
-  # transform 
-  dt = [{
-    "_id": d["_id"],
-    "analyzer": {
-      "embeddings": d["_source"]["analyzer"]["embeddings"],
-    },
-    "article": {
-      **d["_source"]["article"],
-    }
-  } for d in docs["hits"]["hits"]]
+  articles = repo.get_articles(query)
 
   # run topic modeling, insert topics into db, update documents with topics
-  model_topics(query, dt)
+  model_topics(query, articles)
 
 if __name__ == '__main__':
   run_topic_modeling()
