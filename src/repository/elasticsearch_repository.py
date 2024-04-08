@@ -1,6 +1,6 @@
 from domain.query_config import QueryConfig
-from domain.article import Article
-from domain.topic import Topic, ArticleTopic
+from domain.article import Article, ArticleTopic
+from domain.topic import Topic
 from utils import log_utils
 from repository.repository import ArticleRepository, TopicRepository
 import logging
@@ -33,9 +33,9 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
     self.log.info(f"connecting to Elasticsearch at {conn}")
     self.es = Elasticsearch(conn, basic_auth=(user, password), ca_certs=cacerts, verify_certs=verify_certs)
 
-    self.assert_articles_index()
+    self.__assert_articles_index()
 
-  def assert_articles_index(self):
+  def __assert_articles_index(self):
     try:
       self.log.info(f"creating/asserting index '{self.article_index}'")
       self.es.indices.create(index=self.article_index, mappings={
@@ -54,6 +54,7 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
             "properties": {
               "categories": {
                 "type": "text",
+                # keyword mapping needed so we can do aggregations
                 "fields": {
                   "keyword": {
                     "type": "keyword",
@@ -63,7 +64,7 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
               },
               "embeddings": {
                 "type": "dense_vector",
-                "dims": 384, # depends on model used
+                "dims": 384, # depends on the embeddings model
               },
               "entities": {
                 "type": "text"
@@ -78,8 +79,36 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
               "url": {
                 "type": "keyword",
               },
+              "metadata": {
+                "properties": {
+                  "source": {
+                    "type": "text",
+                    # keyword mapping needed so we can do aggregations
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  },
+                  "categories": {
+                    "type": "text",
+                    # keyword mapping needed so we can do aggregations
+                    "fields": {
+                      "keyword": {
+                        "type": "keyword",
+                        "ignore_above": 256
+                      }
+                    }
+                  }
+                }
+              },
               "publish_date": {
                 "type": "date",
+              },
+              "image": {
+                "type": "keyword",
+                "enabled": "false", # don't index image urls
               },
               "author": {
                 "type": "text",

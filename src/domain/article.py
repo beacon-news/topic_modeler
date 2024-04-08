@@ -10,3 +10,9 @@ class Article(pydantic.BaseModel):
   title: list[str]
   paragraphs: list[str]
   embeddings: list[float]
+
+
+# subset of topic, appended to the articles
+class ArticleTopic(pydantic.BaseModel):
+  id: str
+  topic: str

@@ -18,9 +18,3 @@ class Topic(pydantic.BaseModel):
   topic: str
   count: int
   representative_articles: list[TopicArticle]
-
-
-# subset of topic, appended to the articles
-class ArticleTopic(pydantic.BaseModel):
-  id: str
-  topic: str

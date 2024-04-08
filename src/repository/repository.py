@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from domain.query_config import QueryConfig
-from domain.article import Article
-from domain.topic import Topic, ArticleTopic
+from domain.article import Article, ArticleTopic
+from domain.topic import Topic
 
 
 class TopicRepository(ABC):

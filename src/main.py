@@ -1,7 +1,7 @@
 from utils import log_utils
 from domain.query_config import QueryConfig
-from domain.article import Article
-from domain.topic import Topic, TopicArticle, ArticleTopic
+from domain.article import Article, ArticleTopic
+from domain.topic import Topic, TopicArticle
 from repository.elasticsearch_repository import ElasticsearchRepository
 from repository.repository import *
 import os
@@ -57,7 +57,7 @@ umap_model = UMAP(
 )
 
 hdbscan_model = HDBSCAN(
-    min_cluster_size=2, # nr. of points required for a cluster (documents for a topic) default 10
+    min_cluster_size=10, # nr. of points required for a cluster (documents for a topic) default 10
     metric='euclidean',
     cluster_selection_method='eom',
     prediction_data=True, # if we want to approximate clusters for new points
