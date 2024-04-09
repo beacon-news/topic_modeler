@@ -145,28 +145,34 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
 
     self.log.info(f"running topic modeling with query {query}")
 
-    # query the db, only what is needed
-    # TODO: set a reasonable size, or process every doc
-    result = self.es.search(
-      index=self.article_index,
-      query=es_query,
-      source=["_id", "analyzer.embeddings", "article"],
-      size=8000,
+    # query the db, take only what is needed
+
+    q = {
+      "query": es_query
+    }
+    result = helpers.scan(
+      client=self.es,
+      query=q,
+      size=1000,
     )
 
-    hits = result["hits"]["hits"]
-    self.log.info(f"found {len(hits)} docs")
-
-    articles = [ Article(
-      id=doc["_id"],
-      url=doc["_source"]["article"]["url"],
-      publish_date=doc["_source"]["article"]["publish_date"],
-      author=doc["_source"]["article"]["author"],
-      title=doc["_source"]["article"]["title"],
-      paragraphs=doc["_source"]["article"]["paragraphs"],
-      embeddings=doc["_source"]["analyzer"]["embeddings"],
-    ) for doc in hits ]
-
+    count = 0
+    articles = []
+    for doc in result:
+      articles.append(Article(
+        id=doc["_id"],
+        url=doc["_source"]["article"]["url"],
+        publish_date=doc["_source"]["article"]["publish_date"],
+        author=doc["_source"]["article"]["author"],
+        title=doc["_source"]["article"]["title"],
+        paragraphs=doc["_source"]["article"]["paragraphs"],
+        embeddings=doc["_source"]["analyzer"]["embeddings"],
+      ))
+      count += 1
+      if count >= query.limit:
+        self.log.info(f"limit {query.limit} reached, stopping scan")
+        break
+    
     return articles
 
   def store_topics(self, topics: list[Topic]) -> list[str]:

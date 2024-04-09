@@ -55,3 +55,4 @@ class PublishDateQuery(pydantic.BaseModel):
 
 class QueryConfig(pydantic.BaseModel):
   publish_date: PublishDateQuery 
+  limit: int = 8000
