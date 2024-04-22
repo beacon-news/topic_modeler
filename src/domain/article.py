@@ -5,6 +5,7 @@ from datetime import datetime
 class Article(pydantic.BaseModel):
   id: str
   url: str
+  image: str | None
   publish_date: datetime
   author: list[str]
   title: list[str]

@@ -11,21 +11,23 @@ class PublishDateQuery(pydantic.BaseModel):
   def parse_date_str(date_str: str) -> datetime:
 
     # validates absolute and relative date strings
-    # e.g. absolute iso time: 2020-01-01T00:00:00
-    # e.g. relative time: now-1d, now-1m
+    # e.g. absolute iso date time: 2020-01-01T00:00:00
+    # e.g. relative date time (days are the most granular option): today-1d, today-1m
 
     try:
       dt = datetime.fromisoformat(date_str)
     except Exception:
       # try to parse relative string
-      if len(re.findall(r'^now(-[0-9]+(d|w|m|y))?$', date_str)) == 0:
+      if len(re.findall(r'^today(-[0-9]+(d|w|m|y))?$', date_str)) == 0:
         raise ValueError(f"invalid date string: {date_str}")
-      
-      if date_str == 'now':
-        return datetime.now()
 
-      # strip the 'now-'
-      date_str = date_str[4:]
+      today_str = 'today'
+      
+      if date_str == today_str:
+        return datetime.today()
+
+      # strip the 'today-'
+      date_str = date_str[len(today_str) + 1:]
       
       # get the number
       m = re.match(r'[0-9]+', date_str)

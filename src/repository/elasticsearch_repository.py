@@ -1,6 +1,7 @@
 from domain.query_config import QueryConfig
 from domain.article import Article, ArticleTopic
 from domain.topic import Topic
+from domain.topic import TopicBatch
 from utils import log_utils
 from repository.repository import ArticleRepository, TopicRepository
 import logging
@@ -27,6 +28,7 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
     self.configure_logging(log_level)
     self.article_index = "articles"
     self.topic_index = "topics"
+    self.topic_batch_index = "topic_batches"
 
     # TODO: secure with TLS
     # TODO: add some form of auth
@@ -34,6 +36,9 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
     self.es = Elasticsearch(conn, basic_auth=(user, password), ca_certs=cacerts, verify_certs=verify_certs)
 
     self.__assert_articles_index()
+
+    # TODO: add topic index assertion
+    # TODO: add topic batches index assertion
 
   def __assert_articles_index(self):
     try:
@@ -143,7 +148,7 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
       }
     }
 
-    self.log.info(f"running topic modeling with query {query}")
+    self.log.info(f"retrieving articles with query {query}")
 
     # query the db, take only what is needed
 
@@ -162,6 +167,7 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
       articles.append(Article(
         id=doc["_id"],
         url=doc["_source"]["article"]["url"],
+        image=doc["_source"]["article"]["image"],
         publish_date=doc["_source"]["article"]["publish_date"],
         author=doc["_source"]["article"]["author"],
         title=doc["_source"]["article"]["title"],
@@ -192,6 +198,7 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
       representative_articles = [{
         "_id": art.id,
         "url": art.url,
+        "image": art.image,
         "publish_date": art.publish_date.isoformat(),
         "author": art.author,
         "title": art.title,
@@ -200,18 +207,41 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
       action = {
         "_index": self.topic_index,
         "_id": topic.id,
-        "create_time": topic.create_time.isoformat(),
-        "query": {
+        "batch_id": topic.batch_id,
+        "batch_query": {
           "publish_date": {
-            "start": topic.query.publish_date.start.isoformat(),
-            "end": topic.query.publish_date.end.isoformat(),
+            "start": topic.batch_query.publish_date.start.isoformat(),
+            "end": topic.batch_query.publish_date.end.isoformat(),
           }
         },
+        "create_time": topic.create_time.isoformat(),
         "topic": topic.topic,
         "count": topic.count,
         "representative_articles": representative_articles, 
       }
       yield action
+  
+  def store_topic_batch(self, topic_batch: TopicBatch) -> str:
+    self.log.info(f"attempting to insert topic batch with id {topic_batch.id}")
+    topic_batch_doc = {
+      "query": {
+        "publish_date": {
+          "start": topic_batch.query.publish_date.start.isoformat(),
+          "end": topic_batch.query.publish_date.end.isoformat(),
+        },
+        "article_count": topic_batch.article_count,
+        "create_time": topic_batch.create_time,
+      }
+    }
+
+    result = self.es.index(
+      index=self.topic_batch_index,
+      id=topic_batch.id,
+      document=topic_batch_doc
+    )
+
+    return result["_id"]
+
   
   def update_article_topic(self, art: Article, topic: ArticleTopic):
     # TODO: use this a compiled script, not as an inline one

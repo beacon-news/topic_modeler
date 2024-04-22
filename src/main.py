@@ -1,7 +1,7 @@
 from utils import log_utils
 from domain.query_config import QueryConfig
 from domain.article import Article, ArticleTopic
-from domain.topic import Topic, TopicArticle
+from domain.topic import Topic, TopicArticle, TopicBatch
 from repository.elasticsearch_repository import ElasticsearchRepository
 from repository.repository import *
 import os
@@ -93,32 +93,54 @@ def model_topics(query: QueryConfig, articles: list[Article]):
 
   bt.fit_transform(doc_texts, doc_embeddings)
 
-  # create the topics without representative docs
-  topics: list[Topic] = []
   topic_info = bt.get_topic_info()
   log.info(f"found {len(topic_info)} topics, printing topic info")
   print(topic_info)
 
+  if (len(topic_info) == 1):
+    log.info("only found 1 topic, the outliers, returning")
+    return
+  
+  # create the topic batch once we know there are some topics
+  log.info(f"making topic batch for {len(topic_info) - 1} topics")
+
   start_time = query.publish_date.start.isoformat()
   end_time = query.publish_date.end.isoformat()
+  batch_id = hashlib.sha1(f"{start_time}-{end_time}".encode()).hexdigest()
+
+  topic_batch = TopicBatch(
+    id=batch_id,
+    article_count=0,
+    query=query,
+    create_time=datetime.now().isoformat(),
+  )
+
+  non_outlier_count = topic_info.loc[topic_info["Topic"] != -1, ["Count"]].sum()
+  log.info(f"number of all non-outlier articles in run: {non_outlier_count}, {non_outlier_count / len(articles)}")
+
+
+  # create the topics without representative docs
+  topics: list[Topic] = []
 
   topic_df_dict = topic_info.loc[topic_info["Topic"] != -1, ["Count", "Representation"]].to_dict()
   for d in zip(topic_df_dict["Count"].values(), topic_df_dict["Representation"].values()):
 
     topic_name = " ".join(d[1])
     topic_id = hashlib.sha1(f"{topic_name}-{start_time}-{end_time}".encode()).hexdigest()
-    topics.append(Topic(
+    topic = Topic(
       id=topic_id,
+      batch_id=batch_id,
+      batch_query=query,
       create_time=datetime.now().isoformat(),
-      query=query,
       topic=topic_name,
       count=d[0],
       representative_articles=[],
-    ))
-  
-  if len(topics) == 0:
-    log.info(f"only outliers found, returning")
-    return
+    )
+    topics.append(topic)
+
+    # update the article count of the batch
+    topic_batch.article_count += topic.count
+
   
   log.info(f"found {len(topics)} topics, adding representative docs, updating docs with topics")
 
@@ -140,6 +162,7 @@ def model_topics(query: QueryConfig, articles: list[Article]):
         TopicArticle(
           id=art.id,
           url=art.url,
+          image=art.image,
           publish_date=art.publish_date,
           author=art.author,
           title=art.title,
@@ -151,7 +174,11 @@ def model_topics(query: QueryConfig, articles: list[Article]):
       topic=topics[topic_ind].topic,
     )
     repo.update_article_topic(art, article_topic)
-  
+
+  # insert the topic batch
+  stored_batch_id = repo.store_topic_batch(topic_batch)
+  log.info(f"stored topic batch with id {stored_batch_id}")
+
   # insert the topics
   ids = repo.store_topics(topics)
   log.info(f"stored {len(ids)} topics, topic ids: {ids}")
