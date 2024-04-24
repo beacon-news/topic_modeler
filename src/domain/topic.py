@@ -6,6 +6,7 @@ class TopicBatch(pydantic.BaseModel):
   id: str
   query: QueryConfig
   article_count: int
+  topic_count: int
   create_time: datetime
 
 

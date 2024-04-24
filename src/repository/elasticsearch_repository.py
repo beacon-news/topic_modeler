@@ -229,9 +229,10 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
           "start": topic_batch.query.publish_date.start.isoformat(),
           "end": topic_batch.query.publish_date.end.isoformat(),
         },
-        "article_count": topic_batch.article_count,
-        "create_time": topic_batch.create_time,
-      }
+      },
+      "article_count": topic_batch.article_count,
+      "topic_count": topic_batch.topic_count,
+      "create_time": topic_batch.create_time,
     }
 
     result = self.es.index(

@@ -108,9 +108,11 @@ def model_topics(query: QueryConfig, articles: list[Article]):
   end_time = query.publish_date.end.isoformat()
   batch_id = hashlib.sha1(f"{start_time}-{end_time}".encode()).hexdigest()
 
+  # article and topic counts will be updated after the topics have been created
   topic_batch = TopicBatch(
     id=batch_id,
     article_count=0,
+    topic_count=0,
     query=query,
     create_time=datetime.now().isoformat(),
   )
@@ -141,6 +143,8 @@ def model_topics(query: QueryConfig, articles: list[Article]):
     # update the article count of the batch
     topic_batch.article_count += topic.count
 
+  # update the topic count of the batch
+  topic_batch.topic_count = len(topics)
   
   log.info(f"found {len(topics)} topics, adding representative docs, updating docs with topics")
 
@@ -180,8 +184,8 @@ def model_topics(query: QueryConfig, articles: list[Article]):
   log.info(f"stored topic batch with id {stored_batch_id}")
 
   # insert the topics
-  ids = repo.store_topics(topics)
-  log.info(f"stored {len(ids)} topics, topic ids: {ids}")
+  topic_ids = repo.store_topics(topics)
+  log.info(f"stored {len(topic_ids)} topics, topic ids: {topic_ids}")
 
 
 def run_topic_modeling():
