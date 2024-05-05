@@ -238,7 +238,8 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
     result = self.es.index(
       index=self.topic_batch_index,
       id=topic_batch.id,
-      document=topic_batch_doc
+      document=topic_batch_doc,
+      refresh="wait_for", # wait for the index to be searchable
     )
 
     return result["_id"]
@@ -246,25 +247,29 @@ class ElasticsearchRepository(ArticleRepository, TopicRepository):
   
   def update_article_topic(self, art: Article, topic: ArticleTopic):
     # TODO: use this a compiled script, not as an inline one
-    self.es.update(index=self.article_index, id=art.id, body={
-      "script": {
-        "source": """
-        if (ctx._source.topics == null) {
-          ctx._source.topics = [
-            'topic_ids': [],
-            'topic_names': []
-          ]
+    self.es.update(
+      index=self.article_index, 
+      id=art.id, 
+      body={
+        "script": {
+          "source": """
+          if (ctx._source.topics == null) {
+            ctx._source.topics = [
+              'topic_ids': [],
+              'topic_names': []
+            ]
+          }
+          if (!ctx._source.topics.topic_ids.contains(params.topic_id)) { 
+            ctx._source.topics.topic_ids.add(params.topic_id) 
+          } 
+          if (!ctx._source.topics.topic_names.contains(params.topic)) { 
+            ctx._source.topics.topic_names.add(params.topic) 
+          }
+          """,
+          "params": {
+            "topic_id": topic.id,
+            "topic": topic.topic,
+          }
         }
-        if (!ctx._source.topics.topic_ids.contains(params.topic_id)) { 
-          ctx._source.topics.topic_ids.add(params.topic_id) 
-        } 
-        if (!ctx._source.topics.topic_names.contains(params.topic)) { 
-          ctx._source.topics.topic_names.add(params.topic) 
-        }
-        """,
-        "params": {
-          "topic_id": topic.id,
-          "topic": topic.topic,
-        }
-      }
-    })
+      },
+    )
