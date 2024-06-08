@@ -45,10 +45,7 @@ __vectorizer_model = CountVectorizer(
     stop_words='english',
 )
 
-# ps = PartOfSpeech("en_core_web_sm")
 __mmr = MaximalMarginalRelevance(diversity=0.3)
-
-# representation_model = [ps, mmr]
 __representation_model = __mmr
 
 # Note: this cannot be private because it is used in a static method, and names get mangled somehow
@@ -86,7 +83,7 @@ class BertopicTopicModeler:
 
     topic_info = self.__bertopic.get_topic_info()
     self.log.info(f"found {len(topic_info)} topics, printing topic info")
-
+    # must use print here because of pandas' table output
     print(topic_info)
 
     if (len(topic_info) == 1):
@@ -210,7 +207,6 @@ class BertopicTopicModeler:
     self.log.info("updated articles with topics")
 
 
-# TODO: this is not a real factory...
 class BertopicTopicModelerFactory:
 
   @staticmethod
